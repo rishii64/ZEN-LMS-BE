@@ -1,0 +1,363 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ----------------------------------------------------
+// 1. TENANCY & SECTOR DOMAIN
+// ----------------------------------------------------
+
+model Organization {
+  id             String                @id @default(uuid())
+  name           String
+  slug           String                @unique
+  sector         String                @default("CORPORATE") // CORPORATE, EDUCATION, GOVERNMENT, NON_PROFIT
+  logoUrl        String?
+  primaryColor   String                @default("#2563eb") // Hex code
+  secondaryColor String                @default("#1e40af")
+  status         String                @default("ACTIVE") // ACTIVE, PENDING, SUSPENDED
+  timezone       String                @default("UTC")
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  settings       OrganizationSetting?
+  departments    Department[]
+  memberships    UserMembership[]
+  courses        Course[]
+  enrollments    Enrollment[]
+  certificates   Certificate[]
+  certTemplates  CertificateTemplate[]
+  auditLogs      AuditLog[]
+
+  @@index([slug])
+  @@index([sector])
+}
+
+model OrganizationSetting {
+  id                  String       @id @default(uuid())
+  organizationId      String       @unique
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // Dynamic sector terminology JSON:
+  // e.g. {"learner":"Student","learners":"Students","instructor":"Professor","course":"Course","department":"Faculty"}
+  terminology         String       @default("{}")
+  completionPolicy    String       @default("{\"requireAllLessons\":true,\"requirePassQuiz\":true}")
+  allowSelfEnrollment Boolean      @default(true)
+  emailNotifications  Boolean      @default(true)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+}
+
+model Department {
+  id             String           @id @default(uuid())
+  organizationId String
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  code           String?
+  description    String?
+  parentId       String?
+  parent         Department?      @relation("DeptHierarchy", fields: [parentId], references: [id])
+  children       Department[]     @relation("DeptHierarchy")
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  memberships    UserMembership[]
+
+  @@index([organizationId])
+}
+
+// ----------------------------------------------------
+// 2. IDENTITY, USERS & RBAC
+// ----------------------------------------------------
+
+model User {
+  id             String            @id @default(uuid())
+  email          String            @unique
+  passwordHash   String
+  firstName      String
+  lastName       String
+  avatarUrl      String?
+  isSuperAdmin   Boolean           @default(false)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  memberships    UserMembership[]
+  authoredCourses Course[]         @relation("CourseAuthor")
+  enrollments    Enrollment[]
+  attempts       AssessmentAttempt[]
+  certificates   Certificate[]
+  auditLogs      AuditLog[]
+
+  @@index([email])
+}
+
+model UserMembership {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  departmentId   String?
+  department     Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  // Scoped roles: ORG_ADMIN, DEPT_MANAGER, INSTRUCTOR, LEARNER
+  role           String       @default("LEARNER")
+  status         String       @default("ACTIVE") // ACTIVE, INVITED, SUSPENDED
+  title          String?      // e.g. "Senior Consultant", "Student", "Director"
+  joinedAt       DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, userId])
+  @@index([organizationId, role])
+  @@index([userId])
+}
+
+// ----------------------------------------------------
+// 3. COURSE & CONTENT MANAGEMENT
+// ----------------------------------------------------
+
+model Course {
+  id             String         @id @default(uuid())
+  organizationId String
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  title          String
+  slug           String
+  description    String?
+  category       String         @default("General")
+  level          String         @default("BEGINNER") // BEGINNER, INTERMEDIATE, ADVANCED
+  coverImageUrl  String?
+  status         String         @default("DRAFT") // DRAFT, REVIEW, PUBLISHED, ARCHIVED
+  estimatedHours Int            @default(2)
+  isMandatory    Boolean        @default(false)
+  authorId       String
+  author         User           @relation("CourseAuthor", fields: [authorId], references: [id])
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  modules        Module[]
+  enrollments    Enrollment[]
+  certificates   Certificate[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, status])
+}
+
+model Module {
+  id          String   @id @default(uuid())
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  orderIndex  Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  lessons     Lesson[]
+
+  @@index([courseId, orderIndex])
+}
+
+model Lesson {
+  id              String           @id @default(uuid())
+  moduleId        String
+  module          Module           @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  title           String
+  contentType     String           @default("MARKDOWN") // MARKDOWN, VIDEO, DOCUMENT, QUIZ
+  contentText     String?          // Markdown / HTML / description
+  contentUrl      String?          // Video or PDF URL
+  orderIndex      Int              @default(0)
+  isRequired      Boolean          @default(true)
+  durationMinutes Int              @default(10)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  assessment      Assessment?
+  progresses      LessonProgress[]
+
+  @@index([moduleId, orderIndex])
+}
+
+// ----------------------------------------------------
+// 4. ASSESSMENTS & GRADING
+// ----------------------------------------------------
+
+model Assessment {
+  id               String              @id @default(uuid())
+  lessonId         String              @unique
+  lesson           Lesson              @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  title            String
+  description      String?
+  passingScore     Int                 @default(70) // percentage
+  timeLimitMinutes Int?                // null = no limit
+  maxAttempts      Int                 @default(3)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  questions        Question[]
+  attempts         AssessmentAttempt[]
+}
+
+model Question {
+  id           String           @id @default(uuid())
+  assessmentId String
+  assessment   Assessment       @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  text         String
+  type         String           @default("SINGLE_CHOICE") // SINGLE_CHOICE, MULTIPLE_CHOICE, TRUE_FALSE, SHORT_ANSWER
+  points       Int              @default(1)
+  orderIndex   Int              @default(0)
+  explanation  String?
+  createdAt    DateTime         @default(now())
+
+  options      QuestionOption[]
+  answers      AttemptAnswer[]
+
+  @@index([assessmentId, orderIndex])
+}
+
+model QuestionOption {
+  id         String   @id @default(uuid())
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  text       String
+  isCorrect  Boolean  @default(false)
+  orderIndex Int      @default(0)
+
+  @@index([questionId])
+}
+
+model AssessmentAttempt {
+  id           String          @id @default(uuid())
+  assessmentId String
+  assessment   Assessment      @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  enrollmentId String?
+  enrollment   Enrollment?     @relation(fields: [enrollmentId], references: [id], onDelete: SetNull)
+  score        Float           // Percentage achieved
+  totalPoints  Int             @default(0)
+  isPassed     Boolean         @default(false)
+  attemptNumber Int            @default(1)
+  submittedAt  DateTime        @default(now())
+
+  answers      AttemptAnswer[]
+
+  @@index([assessmentId, userId])
+}
+
+model AttemptAnswer {
+  id                String            @id @default(uuid())
+  attemptId         String
+  attempt           AssessmentAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  questionId        String
+  question          Question          @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  selectedOptionIds String            @default("[]") // JSON string of selected option IDs
+  textAnswer        String?
+  isCorrect         Boolean           @default(false)
+  pointsAwarded     Float             @default(0)
+
+  @@index([attemptId])
+}
+
+// ----------------------------------------------------
+// 5. DELIVERY, PROGRESS & CREDENTIALS
+// ----------------------------------------------------
+
+model Enrollment {
+  id             String           @id @default(uuid())
+  organizationId String
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  courseId       String
+  course         Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status         String           @default("NOT_STARTED") // NOT_STARTED, IN_PROGRESS, COMPLETED
+  progressPct    Float            @default(0.0)
+  enrolledAt     DateTime         @default(now())
+  startedAt      DateTime?
+  completedAt    DateTime?
+  deadline       DateTime?
+
+  lessonProgress LessonProgress[]
+  attempts       AssessmentAttempt[]
+  certificate    Certificate?
+
+  @@unique([courseId, userId])
+  @@index([organizationId, status])
+  @@index([userId])
+}
+
+model LessonProgress {
+  id                  String     @id @default(uuid())
+  enrollmentId        String
+  enrollment          Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  lessonId            String
+  lesson              Lesson     @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  isCompleted         Boolean    @default(false)
+  completedAt         DateTime?
+  lastPositionSeconds Int        @default(0)
+
+  @@unique([enrollmentId, lessonId])
+  @@index([enrollmentId])
+}
+
+model CertificateTemplate {
+  id                String       @id @default(uuid())
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name              String
+  title             String       @default("Certificate of Completion")
+  description       String?
+  signatureTitle    String       @default("Authorized Signatory")
+  signerName        String       @default("Platform Director")
+  signatureImageUrl String?
+  backgroundTheme   String       @default("MODERN_BLUE") // MODERN_BLUE, CLASSIC_GOLD, MINIMAL_EMERALD
+  createdAt         DateTime     @default(now())
+
+  @@index([organizationId])
+}
+
+model Certificate {
+  id                String       @id @default(uuid())
+  certificateNumber String       @unique // e.g. ZEN-2026-X8F2B
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  courseId          String
+  course            Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  enrollmentId      String       @unique
+  enrollment        Enrollment   @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  verificationCode  String       @unique // Unique hash for verification URL
+  issueDate         DateTime     @default(now())
+  expiryDate        DateTime?
+  recipientName     String
+  courseTitle       String
+  organizationName  String
+  createdAt         DateTime     @default(now())
+
+  @@index([verificationCode])
+  @@index([organizationId])
+}
+
+// ----------------------------------------------------
+// 6. AUDIT & OPERATIONS
+// ----------------------------------------------------
+
+model AuditLog {
+  id             String        @id @default(uuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  userId         String?
+  user           User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action         String        // e.g. "COURSE_PUBLISHED", "USER_INVITED", "CERTIFICATE_ISSUED"
+  entityType     String        // e.g. "Course", "User", "Certificate"
+  entityId       String
+  details        String        @default("{}") // JSON metadata
+  ipAddress      String?
+  createdAt      DateTime      @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([userId])
+}
