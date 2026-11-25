@@ -1,12 +1,127 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
+import { SYSTEM_PERMISSIONS } from '../src/lib/permissions.js';
 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('🌱 Starting ZenLMS Multi-Tenant Seeding...');
+  console.log('🌱 Starting ZenLMS Comprehensive Multi-Tenant SaaS Seeding...');
 
-  // 1. Create Super Admin
+  // Clean dynamic collections for fresh idempotent seed
+  await prisma.policyAcknowledgement.deleteMany();
+  await prisma.compliancePolicy.deleteMany();
+  await prisma.sessionAttendance.deleteMany();
+  await prisma.liveSession.deleteMany();
+  await prisma.learningPathItem.deleteMany();
+  await prisma.learningPath.deleteMany();
+  await prisma.announcement.deleteMany();
+  await prisma.certificate.deleteMany();
+  await prisma.lessonProgress.deleteMany();
+  await prisma.attemptAnswer.deleteMany();
+  await prisma.assessmentAttempt.deleteMany();
+  await prisma.questionOption.deleteMany();
+  await prisma.question.deleteMany();
+  await prisma.assessment.deleteMany();
+  await prisma.lesson.deleteMany();
+  await prisma.module.deleteMany();
+  await prisma.enrollment.deleteMany();
+  await prisma.membershipRole.deleteMany();
+  await prisma.rolePermission.deleteMany();
+  await prisma.role.deleteMany();
+  await prisma.groupMembership.deleteMany();
+  await prisma.team.deleteMany();
+  await prisma.location.deleteMany();
+  await prisma.department.deleteMany();
+  console.log('1. Seeding System Permissions...');
+  for (const perm of SYSTEM_PERMISSIONS) {
+    await prisma.permission.upsert({
+      where: { code: perm.code },
+      update: {
+        module: perm.module,
+        action: perm.action,
+        description: perm.description
+      },
+      create: perm
+    });
+  }
+
+  // 2. Seed Subscription Plans
+  console.log('2. Seeding Subscription Plans...');
+  const starterPlan = await prisma.subscriptionPlan.upsert({
+    where: { name: 'STARTER' },
+    update: {},
+    create: {
+      name: 'STARTER',
+      displayName: 'Starter SaaS Plan',
+      description: 'Ideal for small training academies, specialized schools, and emerging teams.',
+      monthlyPrice: 99,
+      annualPrice: 990,
+      currency: 'USD',
+      maxUsers: 75,
+      maxStorageGb: 15,
+      maxCourses: 25,
+      featuresJson: JSON.stringify(['courses.core', 'reports.basic', 'assessments.mcq']),
+      isPublic: true
+    }
+  });
+
+  const proPlan = await prisma.subscriptionPlan.upsert({
+    where: { name: 'PROFESSIONAL' },
+    update: {},
+    create: {
+      name: 'PROFESSIONAL',
+      displayName: 'Professional Enterprise Tier',
+      description: 'Tailored for growing institutions, mid-market enterprises, and corporate training divisions.',
+      monthlyPrice: 299,
+      annualPrice: 2990,
+      currency: 'USD',
+      maxUsers: 300,
+      maxStorageGb: 60,
+      maxCourses: 150,
+      featuresJson: JSON.stringify(['courses.core', 'learning_paths', 'branding.advanced', 'certificates.custom', 'reports.advanced']),
+      isPublic: true
+    }
+  });
+
+  const enterprisePlan = await prisma.subscriptionPlan.upsert({
+    where: { name: 'ENTERPRISE' },
+    update: {},
+    create: {
+      name: 'ENTERPRISE',
+      displayName: 'Global Enterprise & Higher Ed Tier',
+      description: 'Full workforce scale with customized reporting, dynamic RBAC, live learning, and dedicated support.',
+      monthlyPrice: 799,
+      annualPrice: 7990,
+      currency: 'USD',
+      maxUsers: 1500,
+      maxStorageGb: 300,
+      maxCourses: 600,
+      featuresJson: JSON.stringify(['courses.core', 'learning_paths', 'live_sessions', 'branding.advanced', 'certificates.custom', 'rbac.dynamic', 'compliance.full', 'reports.builder']),
+      isPublic: true
+    }
+  });
+
+  const govPlan = await prisma.subscriptionPlan.upsert({
+    where: { name: 'GOVERNMENT' },
+    update: {},
+    create: {
+      name: 'GOVERNMENT',
+      displayName: 'Government & Sovereign Deployment',
+      description: 'High-security audit controls, strict data residency compliance, and air-gapped integration readiness.',
+      monthlyPrice: 1499,
+      annualPrice: 14990,
+      currency: 'USD',
+      maxUsers: 10000,
+      maxStorageGb: 1000,
+      maxCourses: 2500,
+      featuresJson: JSON.stringify(['all_modules', 'audit.unlimited', 'retention.sovereign', 'sso.saml']),
+      isPublic: true
+    }
+  });
+
+  // 3. Create Super Admin
+  console.log('3. Seeding Platform Super Admin...');
   const superPassword = await bcrypt.hash('Admin123!', 10);
   const superAdmin = await prisma.user.upsert({
     where: { email: 'superadmin@zenlms.io' },
@@ -21,7 +136,8 @@ async function main() {
     }
   });
 
-  // 2. TENANT 1: Higher Education (Apex University)
+  // 4. TENANT 1: Higher Education (Apex Institute of Technology)
+  console.log('4. Seeding Tenant 1: Apex Institute of Technology (Higher Ed)...');
   const apexOrg = await prisma.organization.upsert({
     where: { slug: 'apex-university' },
     update: {},
@@ -61,7 +177,21 @@ async function main() {
     }
   });
 
-  // Apex Departments
+  // Apex Subscription
+  await prisma.organizationSubscription.upsert({
+    where: { organizationId: apexOrg.id },
+    update: {},
+    create: {
+      organizationId: apexOrg.id,
+      planId: enterprisePlan.id,
+      status: 'ACTIVE',
+      billingCycle: 'ANNUAL',
+      currentPeriodStart: new Date(),
+      currentPeriodEnd: new Date(Date.now() + 365 * 86400000)
+    }
+  });
+
+  // Apex Departments & Locations
   const csDept = await prisma.department.create({
     data: {
       organizationId: apexOrg.id,
@@ -77,6 +207,16 @@ async function main() {
       name: 'Department of Mathematics & Statistics',
       code: 'MATH-FAC',
       description: 'Applied Mathematics and Statistical Sciences'
+    }
+  });
+
+  const apexCampus = await prisma.location.create({
+    data: {
+      organizationId: apexOrg.id,
+      name: 'North Campus Main Academic Center',
+      code: 'NC-MAIN',
+      city: 'Boston',
+      country: 'USA'
     }
   });
 
@@ -126,6 +266,7 @@ async function main() {
     create: {
       organizationId: apexOrg.id,
       userId: apexAdmin.id,
+      locationId: apexCampus.id,
       role: 'ORG_ADMIN',
       title: 'Registrar & Systems Admin'
     }
@@ -138,6 +279,7 @@ async function main() {
       organizationId: apexOrg.id,
       userId: apexProfessor.id,
       departmentId: csDept.id,
+      locationId: apexCampus.id,
       role: 'INSTRUCTOR',
       title: 'Associate Professor of Computer Science'
     }
@@ -150,12 +292,30 @@ async function main() {
       organizationId: apexOrg.id,
       userId: apexStudent.id,
       departmentId: csDept.id,
+      locationId: apexCampus.id,
       role: 'LEARNER',
-      title: 'Junior Undergrad'
+      title: 'Senior Undergrad'
     }
   });
 
-  // Apex Course: Full-Stack Web Architecture
+  // Apex Dynamic Custom Roles
+  const deanRole = await prisma.role.create({
+    data: {
+      organizationId: apexOrg.id,
+      name: 'Academic Dean',
+      description: 'Authorized to review courses, oversee department faculty, and confer degrees',
+      scope: 'ORGANIZATION'
+    }
+  });
+
+  const allPerms = await prisma.permission.findMany();
+  for (const p of allPerms.filter(pm => ['courses.view', 'courses.review', 'courses.publish', 'reports.view', 'reports.export', 'certificates.issue'].includes(pm.code))) {
+    await prisma.rolePermission.create({
+      data: { roleId: deanRole.id, permissionId: p.id }
+    });
+  }
+
+  // Apex Course
   const apexCourse = await prisma.course.upsert({
     where: { organizationId_slug: { organizationId: apexOrg.id, slug: 'cs301-web-architecture' } },
     update: {},
@@ -183,7 +343,7 @@ async function main() {
     }
   });
 
-  const lesson1 = await prisma.lesson.create({
+  await prisma.lesson.create({
     data: {
       moduleId: apexModule1.id,
       title: '1.1 Multi-Tenant Data Isolation Paradigms',
@@ -203,44 +363,21 @@ ZenLMS implements **Shared Database with Mandatory Foreign Key Scoping** coupled
     }
   });
 
-  const lesson2 = await prisma.lesson.create({
-    data: {
-      moduleId: apexModule1.id,
-      title: '1.2 Video Lecture: Scalable Relational Systems',
-      contentType: 'VIDEO',
-      contentUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
-      durationMinutes: 20,
-      orderIndex: 1,
-      contentText: 'Watch this comprehensive breakdown of indexing strategies for multi-tenant relational schemas.'
-    }
-  });
-
-  const apexModule2 = await prisma.module.create({
-    data: {
-      courseId: apexCourse.id,
-      title: 'Module 2: Verification & Knowledge Assessment',
-      description: 'Evaluate your comprehension of multi-tenancy and API design.',
-      orderIndex: 1
-    }
-  });
-
   const quizLesson = await prisma.lesson.create({
     data: {
-      moduleId: apexModule2.id,
-      title: '2.1 Comprehensive Architecture Quiz',
+      moduleId: apexModule1.id,
+      title: '1.2 Comprehensive Architecture Exam',
       contentType: 'QUIZ',
       durationMinutes: 15,
-      orderIndex: 0,
+      orderIndex: 1,
       contentText: 'Demonstrate mastery of multi-tenant isolation, composite constraints, and RBAC enforcement.'
     }
   });
 
-  // Quiz Assessment
   const assessment = await prisma.assessment.create({
     data: {
       lessonId: quizLesson.id,
       title: 'Multi-Tenant Architecture Exam',
-      description: 'Score 70% or higher to fulfill credential requirements.',
       passingScore: 70,
       maxAttempts: 3
     }
@@ -265,26 +402,52 @@ ZenLMS implements **Shared Database with Mandatory Foreign Key Scoping** coupled
     ]
   });
 
-  const q2 = await prisma.question.create({
+  // Apex Learning Path (Program)
+  await prisma.learningPath.create({
     data: {
-      assessmentId: assessment.id,
-      text: 'Why should tenant permissions be validated strictly on the backend rather than solely hiding UI buttons?',
-      type: 'SINGLE_CHOICE',
-      points: 1,
-      orderIndex: 1,
-      explanation: 'Frontend controls can be bypassed by direct API calls; the server must validate authorization.'
+      organizationId: apexOrg.id,
+      authorId: apexProfessor.id,
+      title: 'Full-Stack Software Engineering Career Track',
+      slug: 'fullstack-software-engineering',
+      description: 'Comprehensive 4-course learning trajectory preparing computer science undergraduates for senior engineering roles.',
+      status: 'PUBLISHED',
+      coverImageUrl: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=600',
+      items: {
+        create: [
+          { courseId: apexCourse.id, orderIndex: 0, isMandatory: true }
+        ]
+      }
     }
   });
 
-  await prisma.questionOption.createMany({
-    data: [
-      { questionId: q2.id, text: 'Because users can bypass UI controls and send raw HTTP requests directly', isCorrect: true, orderIndex: 0 },
-      { questionId: q2.id, text: 'Only to reduce frontend bundle sizes', isCorrect: false, orderIndex: 1 },
-      { questionId: q2.id, text: 'It is optional and not strictly necessary', isCorrect: false, orderIndex: 2 }
-    ]
+  // Apex Live Virtual Session
+  await prisma.liveSession.create({
+    data: {
+      organizationId: apexOrg.id,
+      courseId: apexCourse.id,
+      instructorId: apexProfessor.id,
+      title: 'Live Lab: Implementing Tenant Middleware & Security Audits',
+      description: 'Interactive coding workshop demonstrating token resolution and cross-tenant leakage prevention.',
+      meetingUrl: 'https://meet.google.com/xyz-zen-lms',
+      startTime: new Date(Date.now() + 86400000),
+      endTime: new Date(Date.now() + 86400000 + 3600000),
+      status: 'SCHEDULED'
+    }
   });
 
-  // 3. TENANT 2: Corporate L&D (Nexus Global Corp)
+  // Apex Announcement
+  await prisma.announcement.create({
+    data: {
+      organizationId: apexOrg.id,
+      authorId: apexAdmin.id,
+      title: 'Fall Semester Registration & Learning Path Guidelines',
+      content: 'Welcome students and faculty to the new academic term. Please ensure course prerequisites are validated before final exam week.',
+      priority: 'HIGH'
+    }
+  });
+
+  // 5. TENANT 2: Corporate L&D (Nexus Global Enterprises)
+  console.log('5. Seeding Tenant 2: Nexus Global Enterprises (Corporate L&D)...');
   const corpOrg = await prisma.organization.upsert({
     where: { slug: 'nexus-corp' },
     update: {},
@@ -324,7 +487,21 @@ ZenLMS implements **Shared Database with Mandatory Foreign Key Scoping** coupled
     }
   });
 
-  // Nexus Departments
+  // Nexus Subscription (Professional Tier)
+  await prisma.organizationSubscription.upsert({
+    where: { organizationId: corpOrg.id },
+    update: {},
+    create: {
+      organizationId: corpOrg.id,
+      planId: proPlan.id,
+      status: 'ACTIVE',
+      billingCycle: 'ANNUAL',
+      currentPeriodStart: new Date(),
+      currentPeriodEnd: new Date(Date.now() + 365 * 86400000)
+    }
+  });
+
+  // Nexus Departments & Teams
   const engDiv = await prisma.department.create({
     data: {
       organizationId: corpOrg.id,
@@ -338,6 +515,15 @@ ZenLMS implements **Shared Database with Mandatory Foreign Key Scoping** coupled
       organizationId: corpOrg.id,
       name: 'People Operations & Human Resources',
       code: 'HR-OPS'
+    }
+  });
+
+  const secTeam = await prisma.team.create({
+    data: {
+      organizationId: corpOrg.id,
+      departmentId: engDiv.id,
+      name: 'AppSec & Incident Response Team',
+      description: 'Enterprise penetration testing and continuous vulnerability mitigation.'
     }
   });
 
@@ -405,7 +591,7 @@ ZenLMS implements **Shared Database with Mandatory Foreign Key Scoping** coupled
     }
   });
 
-  await prisma.userMembership.upsert({
+  const empMembership = await prisma.userMembership.upsert({
     where: { organizationId_userId: { organizationId: corpOrg.id, userId: corpEmployee.id } },
     update: {},
     create: {
@@ -417,7 +603,30 @@ ZenLMS implements **Shared Database with Mandatory Foreign Key Scoping** coupled
     }
   });
 
-  // Nexus Course: Information Security & Data Privacy 2026
+  // Add to Team
+  await prisma.groupMembership.upsert({
+    where: { teamId_userId: { teamId: secTeam.id, userId: corpEmployee.id } },
+    update: {},
+    create: { teamId: secTeam.id, userId: corpEmployee.id }
+  });
+
+  // Nexus Dynamic Role
+  const complianceRole = await prisma.role.create({
+    data: {
+      organizationId: corpOrg.id,
+      name: 'Compliance Officer',
+      description: 'Audits employee training progress and verifies statutory evidence records',
+      scope: 'ORGANIZATION'
+    }
+  });
+
+  for (const p of allPerms.filter(pm => ['reports.view', 'reports.export', 'compliance.manage', 'users.view'].includes(pm.code))) {
+    await prisma.rolePermission.create({
+      data: { roleId: complianceRole.id, permissionId: p.id }
+    });
+  }
+
+  // Nexus Course
   const corpCourse = await prisma.course.upsert({
     where: { organizationId_slug: { organizationId: corpOrg.id, slug: 'infosec-2026-compliance' } },
     update: {},
@@ -499,7 +708,27 @@ ZenLMS implements **Shared Database with Mandatory Foreign Key Scoping** coupled
     }
   });
 
-  console.log('✅ Seeding completed successfully!');
+  // Nexus Compliance Policy
+  const policy = await prisma.compliancePolicy.create({
+    data: {
+      organizationId: corpOrg.id,
+      title: '2026 Acceptable Use & Remote Work Policy',
+      content: 'All enterprise personnel must adhere to strict endpoint encryption, zero-trust VPN gateways, and confidential data redaction protocols.',
+      version: '2026.1',
+      requiresAcknowledgement: true,
+      renewalMonths: 12
+    }
+  });
+
+  await prisma.policyAcknowledgement.create({
+    data: {
+      policyId: policy.id,
+      userId: corpEmployee.id,
+      acknowledgedAt: new Date()
+    }
+  });
+
+  console.log('✅ Enterprise Multi-Tenant SaaS Seeding Completed Successfully!');
   console.log('✨ Demo Credentials:');
   console.log('   - Super Admin: superadmin@zenlms.io / Admin123!');
   console.log('   - Apex Univ Admin: admin@apex.edu / Apex123!');

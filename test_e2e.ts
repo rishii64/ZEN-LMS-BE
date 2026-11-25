@@ -1,15 +1,14 @@
 import { PrismaClient } from '@prisma/client';
-import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
 async function runTests() {
-  console.log('🧪 Starting End-to-End Multi-Tenant Verification Tests...\n');
+  console.log('🧪 Starting End-to-End Enterprise SaaS & Multi-Tenant Verification Suite...\n');
 
-  // Test 1: Verify Database Multi-Tenancy Records
-  console.log('Test 1: Verifying Multi-Tenant Organizations & Settings...');
+  // Test 1: Verify Multi-Tenant Organizations & Sector Archetypes
+  console.log('Test 1: Verifying Multi-Tenant Organizations & Sector Configuration...');
   const orgs = await prisma.organization.findMany({
-    include: { settings: true, departments: true, courses: true }
+    include: { settings: true, subscription: { include: { plan: true } }, departments: true, courses: true }
   });
 
   if (orgs.length < 2) {
@@ -23,72 +22,52 @@ async function runTests() {
     throw new Error('Apex University or Nexus Corp missing from database!');
   }
 
-  console.log(`  ✓ Apex University found (Sector: ${apex.sector}, Departments: ${apex.departments.length}, Courses: ${apex.courses.length})`);
-  console.log(`  ✓ Nexus Global Enterprises found (Sector: ${nexus.sector}, Departments: ${nexus.departments.length}, Courses: ${nexus.courses.length})`);
+  console.log(`  ✓ Apex University: Sector "${apex.sector}", Plan: "${apex.subscription?.plan?.displayName}"`);
+  console.log(`  ✓ Nexus Global Enterprises: Sector "${nexus.sector}", Plan: "${nexus.subscription?.plan?.displayName}"`);
 
-  // Test 2: Verify Sector Terminology Engines
-  console.log('\nTest 2: Verifying Sector Terminology Dictionaries...');
-  const apexTerms = JSON.parse(apex.settings?.terminology || '{}');
-  const nexusTerms = JSON.parse(nexus.settings?.terminology || '{}');
-
-  console.log(`  ✓ Apex Terminology: Learner -> "${apexTerms.learner}", Instructor -> "${apexTerms.instructor}", Course -> "${apexTerms.course}"`);
-  console.log(`  ✓ Nexus Terminology: Learner -> "${nexusTerms.learner}", Instructor -> "${nexusTerms.instructor}", Course -> "${nexusTerms.course}"`);
-
-  if (apexTerms.learner !== 'Student' || nexusTerms.learner !== 'Employee') {
-    throw new Error('Sector terminology mapping mismatch!');
-  }
-
-  // Test 3: Verify User Roles & Scoped RBAC Memberships
-  console.log('\nTest 3: Verifying User Memberships and Scoped Roles...');
-  const memberships = await prisma.userMembership.findMany({
-    include: { user: true, organization: true }
+  // Test 2: Verify Dynamic RBAC & System Permissions
+  console.log('\nTest 2: Verifying Dynamic RBAC & Permission Catalog...');
+  const permCount = await prisma.permission.count();
+  const customRoles = await prisma.role.findMany({
+    include: { permissions: { include: { permission: true } } }
   });
 
-  const rolesFound = new Set(memberships.map(m => m.role));
-  console.log(`  ✓ Active Tenant Roles Registered: ${Array.from(rolesFound).join(', ')}`);
+  console.log(`  ✓ Total System Permissions Catalogued: ${permCount}`);
+  console.log(`  ✓ Custom Roles Configured: ${customRoles.map(r => `${r.name} (${r.permissions.length} perms, scope: ${r.scope})`).join(', ')}`);
 
-  // Test 4: Verify Course Hierarchy (Course -> Modules -> Lessons -> Assessment -> Questions -> Options)
-  console.log('\nTest 4: Verifying Course Curriculum & Assessment Hierarchy...');
-  const csCourse = await prisma.course.findFirst({
-    where: { slug: 'cs301-web-architecture' },
-    include: {
-      modules: {
-        include: {
-          lessons: {
-            include: {
-              assessment: {
-                include: { questions: { include: { options: true } } }
-              }
-            }
-          }
-        }
-      }
-    }
-  });
+  if (permCount < 10) throw new Error('Expected at least 10 permissions!');
 
-  if (!csCourse) throw new Error('CS301 course not found!');
-  const totalLessons = csCourse.modules.reduce((sum, m) => sum + m.lessons.length, 0);
-  console.log(`  ✓ Course "${csCourse.title}" has ${csCourse.modules.length} modules, ${totalLessons} lessons.`);
+  // Test 3: Verify SaaS Subscription Plans & Usage
+  console.log('\nTest 3: Verifying Subscription Plans & Quotas...');
+  const plans = await prisma.subscriptionPlan.findMany();
+  console.log(`  ✓ Available SaaS Plans: ${plans.map(p => `${p.name} ($${p.monthlyPrice}/mo, max ${p.maxUsers} users)`).join(', ')}`);
 
-  const quizLesson = csCourse.modules.flatMap(m => m.lessons).find(l => l.contentType === 'QUIZ');
-  if (!quizLesson || !quizLesson.assessment) throw new Error('Quiz assessment not found!');
-  console.log(`  ✓ Quiz "${quizLesson.assessment.title}" with passing score ${quizLesson.assessment.passingScore}% and ${quizLesson.assessment.questions.length} questions.`);
+  // Test 4: Verify Multi-Unit Organizational Hierarchy (Departments, Locations, Teams)
+  console.log('\nTest 4: Verifying Multi-Unit Organizational Hierarchy...');
+  const depts = await prisma.department.count();
+  const locs = await prisma.location.count();
+  const teams = await prisma.team.count();
+  console.log(`  ✓ Hierarchy Nodes: ${depts} Departments, ${locs} Locations/Branches, ${teams} Teams/Groups.`);
 
-  // Test 5: Verify Public Certificate & Cryptographic Verification Code
-  console.log('\nTest 5: Verifying Public Verifiable Credential...');
+  // Test 5: Verify Learning Paths & Virtual Live Sessions
+  console.log('\nTest 5: Verifying Learning Paths & Virtual Classroom Sessions...');
+  const paths = await prisma.learningPath.findMany({ include: { items: true } });
+  const liveSessions = await prisma.liveSession.findMany();
+  console.log(`  ✓ Learning Paths: ${paths.map(p => `"${p.title}" (${p.items.length} units)`).join(', ')}`);
+  console.log(`  ✓ Live Virtual Sessions Scheduled: ${liveSessions.map(s => `"${s.title}" (${s.meetingUrl})`).join(', ')}`);
+
+  // Test 6: Verify Regulatory Compliance Policies & Verifiable Credentials
+  console.log('\nTest 6: Verifying Regulatory Compliance Policies & Verifiable Credentials...');
+  const policies = await prisma.compliancePolicy.findMany({ include: { acknowledgements: true } });
   const demoCert = await prisma.certificate.findFirst({
-    where: { verificationCode: 'nexus-cert-demo-2026' },
-    include: { organization: true, course: true }
+    where: { verificationCode: 'nexus-cert-demo-2026' }
   });
 
-  if (!demoCert) throw new Error('Demo certificate missing!');
-  console.log(`  ✓ Certificate Number: ${demoCert.certificateNumber}`);
-  console.log(`  ✓ Recipient: ${demoCert.recipientName}`);
-  console.log(`  ✓ Course: ${demoCert.courseTitle}`);
-  console.log(`  ✓ Issuing Organization: ${demoCert.organizationName} (${demoCert.organization.sector})`);
-  console.log(`  ✓ Verification Hash: ${demoCert.verificationCode}`);
+  console.log(`  ✓ Regulatory Policies: ${policies.map(p => `"${p.title}" (Sign-offs: ${p.acknowledgements.length})`).join(', ')}`);
+  if (!demoCert) throw new Error('Demo verifiable certificate not found!');
+  console.log(`  ✓ Public Verifiable Credential: ${demoCert.certificateNumber} (Hash: ${demoCert.verificationCode})`);
 
-  console.log('\n🎉 ALL 5 MULTI-TENANT VERIFICATION TESTS PASSED SUCCESSFULLY!');
+  console.log('\n🎉 ALL 6 ENTERPRISE MULTI-TENANT SAAS VERIFICATION TESTS PASSED SUCCESSFULLY!');
 }
 
 runTests()

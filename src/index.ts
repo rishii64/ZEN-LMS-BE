@@ -11,6 +11,12 @@ import { progressRouter } from './routes/progress.routes.js';
 import { assessmentRouter } from './routes/assessment.routes.js';
 import { certificateRouter } from './routes/certificate.routes.js';
 import { reportRouter } from './routes/report.routes.js';
+import { roleRouter } from './routes/role.routes.js';
+import { subscriptionRouter } from './routes/subscription.routes.js';
+import { structureRouter } from './routes/structure.routes.js';
+import { learningPathRouter } from './routes/learningpath.routes.js';
+import { liveSessionRouter } from './routes/livesession.routes.js';
+import { communicationRouter } from './routes/communication.routes.js';
 
 dotenv.config();
 
@@ -52,6 +58,12 @@ app.use('/api/v1/progress', progressRouter);
 app.use('/api/v1/assessments', assessmentRouter);
 app.use('/api/v1/certificates', certificateRouter);
 app.use('/api/v1/reports', reportRouter);
+app.use('/api/v1/roles', roleRouter);
+app.use('/api/v1/subscriptions', subscriptionRouter);
+app.use('/api/v1/structure', structureRouter);
+app.use('/api/v1/learning-paths', learningPathRouter);
+app.use('/api/v1/live-sessions', liveSessionRouter);
+app.use('/api/v1/communication', communicationRouter);
 
 // Global Error Handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
