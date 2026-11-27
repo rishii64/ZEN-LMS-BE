@@ -28,9 +28,13 @@ authRouter.get('/me', requireAuth, AuthController.me);
 authRouter.post('/switch-org', requireAuth, AuthController.switchOrganization);
 authRouter.post('/switch-organization', requireAuth, AuthController.switchOrganization);
 authRouter.post('/invite/accept', authLimiter, validate(acceptInviteSchema), AuthController.acceptInvite);
+authRouter.post('/accept-invite', authLimiter, validate(acceptInviteSchema), AuthController.acceptInvite);
 authRouter.post('/mfa/setup', requireAuth, AuthController.setupMfa);
 authRouter.post('/mfa/verify', requireAuth, AuthController.verifyMfa);
+authRouter.post('/mfa/enable', requireAuth, AuthController.verifyMfa);
 authRouter.post('/mfa/disable', requireAuth, AuthController.disableMfa);
+authRouter.get('/sessions', requireAuth, AuthController.listSessions);
+authRouter.delete('/sessions/:id', requireAuth, AuthController.revokeSession);
 const forgotPasswordSchema = z.object({
   email: z.string().email()
 });

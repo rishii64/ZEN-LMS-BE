@@ -588,6 +588,39 @@ export class AuthController {
     }
   }
 
+  static async listSessions(req, res, next) {
+    try {
+      const rows = await withPlatformContext(async (t) => {
+        return Session.findAll({
+          where: { user_id: req.user.id },
+          attributes: ['id', 'ip_address', 'user_agent', 'last_active_at', 'expires_at', 'revoked_at', 'created_at'],
+          order: [['last_active_at', 'DESC']],
+          limit: 30,
+          transaction: t
+        });
+      });
+      return res.status(200).json({ data: rows });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async revokeSession(req, res, next) {
+    try {
+      await withPlatformContext(async (t) => {
+        const updated = await Session.update(
+          { revoked_at: new Date() },
+          { where: { id: req.params.id, user_id: req.user.id }, transaction: t }
+        );
+        if (!updated[0]) throw new NotFoundError('Session');
+      });
+      await auditFromReq(req, 'user.session_revoked', 'session', req.params.id);
+      return res.status(200).json({ success: true });
+    } catch (err) {
+      next(err);
+    }
+  }
+
   static async disableMfa(req, res, next) {
     try {
       const { code, password } = req.body;

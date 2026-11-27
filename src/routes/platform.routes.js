@@ -57,6 +57,7 @@ platformRouter.patch('/organizations/:id/status', PlatformController.updateOrgan
 platformRouter.get('/plans', PlatformController.listPlans);
 platformRouter.post('/plans', validate(createPlanSchema), PlatformController.createPlan);
 platformRouter.get('/audit-logs', PlatformController.listAuditLogs);
+platformRouter.get('/announcements', PlatformController.listAnnouncements);
 platformRouter.post('/announcements', PlatformController.createAnnouncement);
 platformRouter.get('/settings', PlatformController.getPlatformSettings);
 platformRouter.put('/settings/:key', PlatformController.updatePlatformSetting);

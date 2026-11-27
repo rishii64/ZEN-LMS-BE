@@ -23,6 +23,7 @@ import { hashPassword, randomToken } from '../utils/crypto.js';
 import { NotFoundError, BadRequestError } from '../utils/errors.js';
 import { parsePagination, paginatedResponse } from '../utils/pagination.js';
 import { auditFromReq } from '../services/audit.service.js';
+import { emitAnnouncement } from '../services/socket.service.js';
 
 export class PlatformController {
   static async getDashboard(_req, res, next) {
@@ -482,6 +483,7 @@ export class PlatformController {
           organization: org,
           subscription: sub,
           inviteToken,
+          invitationToken: inviteToken,
           adminUser: initialAdminUser
         };
       });
@@ -649,6 +651,21 @@ export class PlatformController {
     }
   }
 
+  static async listAnnouncements(_req, res, next) {
+    try {
+      const rows = await withPlatformContext(async (t) => {
+        return PlatformAnnouncement.findAll({
+          order: [['published_at', 'DESC']],
+          limit: 50,
+          transaction: t
+        });
+      });
+      return res.status(200).json({ success: true, data: rows });
+    } catch (err) {
+      next(err);
+    }
+  }
+
   static async createAnnouncement(req, res, next) {
     try {
       const b = req.body;
@@ -667,6 +684,7 @@ export class PlatformController {
       });
 
       await auditFromReq(req, 'announcement.create', 'platform_announcement', ann.id);
+      emitAnnouncement(ann.toJSON());
       return res.status(201).json({ success: true, data: ann });
     } catch (err) {
       next(err);
